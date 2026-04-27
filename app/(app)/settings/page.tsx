@@ -1,268 +1,353 @@
 'use client'
 
-import { useState } from 'react'
-import { User, Moon, Sun, Bell, Shield, Trash2, LogOut } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import {
+  User,
+  Moon,
+  Sun,
+  LogOut,
+  Mail,
+  Calendar,
+  Database,
+  Heart,
+  Tags,
+  FileCode,
+  Save,
+  Cloud,
+} from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Switch } from '@/components/ui/switch'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Breadcrumbs } from '@/components/breadcrumbs'
-import { ConfirmDialog } from '@/components/confirm-dialog'
 import { FieldGroup, Field, FieldLabel, FieldDescription } from '@/components/ui/field'
 import { Separator } from '@/components/ui/separator'
-import { mockUser } from '@/lib/mock-data'
 import { toast } from 'sonner'
-import Link from 'next/link'
+import { useAuth } from '@/components/auth-provider'
+import { auth } from '@/lib/firebase'
+import { updateProfile } from 'firebase/auth'
+import { logoutUser } from '@/lib/auth'
+import { useRouter } from 'next/navigation'
+import { useTheme } from 'next-themes'
+import { getUserSnippets } from '@/lib/snippets'
+import type { Snippet } from '@/lib/types'
+import { Spinner } from '@/components/ui/spinner'
 
 export default function SettingsPage() {
-  const [name, setName] = useState(mockUser.name)
-  const [email, setEmail] = useState(mockUser.email)
-  const [darkMode, setDarkMode] = useState(true)
-  const [notifications, setNotifications] = useState(true)
-  const [showLineNumbers, setShowLineNumbers] = useState(true)
-  const [autoSave, setAutoSave] = useState(true)
-  const [showDeleteAccount, setShowDeleteAccount] = useState(false)
-  const [isSaving, setIsSaving] = useState(false)
+  const { user } = useAuth()
+  const router = useRouter()
+  const { theme, setTheme } = useTheme()
+
+  const [name, setName] = useState(user?.displayName || '')
+  const [isSavingProfile, setIsSavingProfile] = useState(false)
+  const [snippets, setSnippets] = useState<Snippet[]>([])
+  const [loadingStats, setLoadingStats] = useState(true)
+
+  useEffect(() => {
+    async function loadStats() {
+      if (!user) {
+        setLoadingStats(false)
+        return
+      }
+
+      try {
+        const data = await getUserSnippets(user.uid)
+        setSnippets(data)
+      } catch (error) {
+        console.error(error)
+      } finally {
+        setLoadingStats(false)
+      }
+    }
+
+    loadStats()
+  }, [user])
 
   const handleSaveProfile = async () => {
-    setIsSaving(true)
-    await new Promise((resolve) => setTimeout(resolve, 1000))
-    toast.success('Profile updated successfully')
-    setIsSaving(false)
+    if (!auth.currentUser) return
+
+    setIsSavingProfile(true)
+    try {
+      await updateProfile(auth.currentUser, {
+        displayName: name,
+      })
+      toast.success('Profile updated successfully')
+    } catch (error) {
+      console.error(error)
+      toast.error('Failed to update profile')
+    } finally {
+      setIsSavingProfile(false)
+    }
   }
 
-  const handleDeleteAccount = () => {
-    toast.success('Account deletion requested')
-    setShowDeleteAccount(false)
+  const handleLogout = async () => {
+    try {
+      await logoutUser()
+      toast.success('Logged out successfully')
+      router.push('/login')
+    } catch (error) {
+      toast.error('Failed to logout')
+    }
+  }
+
+  const totalSnippets = snippets.length
+  const favoriteSnippets = snippets.filter((s) => s.isFavorite).length
+  const totalTags = new Set(snippets.flatMap((s) => s.tags)).size
+  const languageCount = new Set(snippets.map((s) => s.language)).size
+
+  if (loadingStats) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <Spinner />
+      </div>
+    )
   }
 
   return (
-    <div className="space-y-6 max-w-3xl">
+    <div className="space-y-6">
       <Breadcrumbs items={[{ label: 'Settings' }]} />
 
       <div>
         <h1 className="text-3xl font-bold text-foreground">Settings</h1>
         <p className="text-muted-foreground mt-1">
-          Manage your account and preferences
+          Your personal cloud workspace controls
         </p>
       </div>
 
-      {/* Profile Section */}
-      <Card className="bg-card border-border">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <User className="h-5 w-5" />
-            Profile
-          </CardTitle>
-          <CardDescription>
-            Manage your personal information
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center gap-6 mb-6">
-            <Avatar className="h-20 w-20">
-              <AvatarImage src={mockUser.avatar} alt={mockUser.name} />
-              <AvatarFallback className="text-2xl">{mockUser.name.charAt(0)}</AvatarFallback>
-            </Avatar>
-            <div>
-              <Button variant="outline" size="sm">
-                Change Avatar
-              </Button>
-              <p className="text-xs text-muted-foreground mt-2">
-                JPG, PNG or GIF. Max 2MB.
-              </p>
-            </div>
-          </div>
-          <FieldGroup>
-            <Field>
-              <FieldLabel htmlFor="name">Full Name</FieldLabel>
-              <Input
-                id="name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="bg-secondary border-border max-w-md"
-              />
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="email">Email Address</FieldLabel>
-              <Input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="bg-secondary border-border max-w-md"
-              />
-            </Field>
-            <Button onClick={handleSaveProfile} disabled={isSaving}>
-              {isSaving ? 'Saving...' : 'Save Changes'}
-            </Button>
-          </FieldGroup>
-        </CardContent>
-      </Card>
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
 
-      {/* Appearance Section */}
-      <Card className="bg-card border-border">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            {darkMode ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
-            Appearance
-          </CardTitle>
-          <CardDescription>
-            Customize how CodeVault looks
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="font-medium text-foreground">Dark Mode</p>
-                <p className="text-sm text-muted-foreground">Use dark theme across the app</p>
-              </div>
-              <Switch
-                checked={darkMode}
-                onCheckedChange={(checked) => {
-                  setDarkMode(checked)
-                  document.documentElement.classList.toggle('dark', checked)
-                  toast.success(`${checked ? 'Dark' : 'Light'} mode enabled`)
-                }}
-              />
-            </div>
-            <Separator />
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="font-medium text-foreground">Show Line Numbers</p>
-                <p className="text-sm text-muted-foreground">Display line numbers in code blocks</p>
-              </div>
-              <Switch checked={showLineNumbers} onCheckedChange={setShowLineNumbers} />
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+        {/* LEFT COLUMN */}
+        <div className="xl:col-span-2 space-y-6">
 
-      {/* Preferences Section */}
-      <Card className="bg-card border-border">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Bell className="h-5 w-5" />
-            Preferences
-          </CardTitle>
-          <CardDescription>
-            Configure your workspace preferences
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="font-medium text-foreground">Email Notifications</p>
-                <p className="text-sm text-muted-foreground">Receive email updates about your snippets</p>
-              </div>
-              <Switch checked={notifications} onCheckedChange={setNotifications} />
-            </div>
-            <Separator />
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="font-medium text-foreground">Auto-save</p>
-                <p className="text-sm text-muted-foreground">Automatically save snippets while editing</p>
-              </div>
-              <Switch checked={autoSave} onCheckedChange={setAutoSave} />
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+          <Card className="bg-card border-border">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <User className="h-5 w-5" />
+                Profile
+              </CardTitle>
+              <CardDescription>
+                Connected Firebase authentication profile
+              </CardDescription>
+            </CardHeader>
 
-      {/* Security Section */}
-      <Card className="bg-card border-border">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Shield className="h-5 w-5" />
-            Security
-          </CardTitle>
-          <CardDescription>
-            Manage your account security
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <FieldGroup>
-            <Field>
-              <FieldLabel htmlFor="current-password">Current Password</FieldLabel>
-              <Input
-                id="current-password"
-                type="password"
-                placeholder="Enter current password"
-                className="bg-secondary border-border max-w-md"
-              />
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="new-password">New Password</FieldLabel>
-              <Input
-                id="new-password"
-                type="password"
-                placeholder="Enter new password"
-                className="bg-secondary border-border max-w-md"
-              />
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="confirm-new-password">Confirm New Password</FieldLabel>
-              <Input
-                id="confirm-new-password"
-                type="password"
-                placeholder="Confirm new password"
-                className="bg-secondary border-border max-w-md"
-              />
-            </Field>
-            <Button variant="outline">Update Password</Button>
-          </FieldGroup>
-        </CardContent>
-      </Card>
+            <CardContent>
+              <div className="flex items-center gap-5 mb-6">
+                <Avatar className="h-20 w-20">
+                  <AvatarImage src={user?.photoURL || ''} alt={user?.displayName || 'User'} />
+                  <AvatarFallback className="text-2xl">
+                    {(user?.displayName || user?.email || 'U').charAt(0).toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
 
-      {/* Danger Zone */}
-      <Card className="bg-card border-destructive/50">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-destructive">
-            <Trash2 className="h-5 w-5" />
-            Danger Zone
-          </CardTitle>
-          <CardDescription>
-            Irreversible actions for your account
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between p-4 rounded-lg border border-border bg-secondary/50">
-            <div>
-              <p className="font-medium text-foreground">Log Out</p>
-              <p className="text-sm text-muted-foreground">Sign out of your account on this device</p>
-            </div>
-            <Button variant="outline" asChild>
-              <Link href="/login">
+                <div>
+                  <p className="text-xl font-semibold text-foreground">
+                    {user?.displayName || 'Unnamed User'}
+                  </p>
+                  <p className="text-sm text-muted-foreground">{user?.email}</p>
+                </div>
+              </div>
+
+              <FieldGroup>
+                <Field>
+                  <FieldLabel>Display Name</FieldLabel>
+                  <Input
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    className="bg-secondary border-border max-w-md"
+                  />
+                  <FieldDescription>
+                    Update how your name appears inside the vault
+                  </FieldDescription>
+                </Field>
+
+                <Button onClick={handleSaveProfile} disabled={isSavingProfile}>
+                  <Save className="h-4 w-4 mr-2" />
+                  {isSavingProfile ? 'Saving...' : 'Save Changes'}
+                </Button>
+              </FieldGroup>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-card border-border">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                {theme === 'dark' ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
+                Appearance
+              </CardTitle>
+              <CardDescription>
+                Instantly switch the global application theme
+              </CardDescription>
+            </CardHeader>
+
+            <CardContent>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <button
+                  onClick={() => {
+                    setTheme('dark')
+                    toast.success('Dark mode enabled')
+                  }}
+                  className={`rounded-xl border p-5 text-left transition-all ${
+                    theme === 'dark'
+                      ? 'border-primary bg-primary/10'
+                      : 'border-border bg-secondary/30'
+                  }`}
+                >
+                  <Moon className="h-5 w-5 mb-3" />
+                  <p className="font-medium">Dark Mode</p>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Ideal for coding at night
+                  </p>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setTheme('light')
+                    toast.success('Light mode enabled')
+                  }}
+                  className={`rounded-xl border p-5 text-left transition-all ${
+                    theme === 'light'
+                      ? 'border-primary bg-primary/10'
+                      : 'border-border bg-secondary/30'
+                  }`}
+                >
+                  <Sun className="h-5 w-5 mb-3" />
+                  <p className="font-medium">Light Mode</p>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Bright clean workspace
+                  </p>
+                </button>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-card border-border">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Cloud className="h-5 w-5" />
+                Cloud Session
+              </CardTitle>
+              <CardDescription>
+                Your live backend connection status
+              </CardDescription>
+            </CardHeader>
+
+            <CardContent className="space-y-4">
+              <div className="rounded-lg border border-border bg-secondary/40 p-4 flex items-center justify-between">
+                <div>
+                  <p className="font-medium">Firebase Authentication</p>
+                  <p className="text-sm text-muted-foreground">Connected and authenticated</p>
+                </div>
+                <span className="text-sm font-medium text-green-500">Online</span>
+              </div>
+
+              <div className="rounded-lg border border-border bg-secondary/40 p-4 flex items-center justify-between">
+                <div>
+                  <p className="font-medium">Firestore Database</p>
+                  <p className="text-sm text-muted-foreground">Cloud snippet synchronization active</p>
+                </div>
+                <span className="text-sm font-medium text-green-500">Synced</span>
+              </div>
+
+              <Button variant="outline" onClick={handleLogout}>
                 <LogOut className="h-4 w-4 mr-2" />
-                Log Out
-              </Link>
-            </Button>
-          </div>
-          <div className="flex items-center justify-between p-4 rounded-lg border border-destructive/30 bg-destructive/5">
-            <div>
-              <p className="font-medium text-foreground">Delete Account</p>
-              <p className="text-sm text-muted-foreground">Permanently delete your account and all data</p>
-            </div>
-            <Button variant="destructive" onClick={() => setShowDeleteAccount(true)}>
-              <Trash2 className="h-4 w-4 mr-2" />
-              Delete Account
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+                Log Out of Session
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
 
-      <ConfirmDialog
-        open={showDeleteAccount}
-        onOpenChange={setShowDeleteAccount}
-        title="Delete Account"
-        description="This action cannot be undone. All your snippets, tags, and account data will be permanently deleted."
-        confirmLabel="Delete My Account"
-        onConfirm={handleDeleteAccount}
-        variant="destructive"
-      />
+        {/* RIGHT SIDEBAR */}
+        <div className="space-y-6">
+
+          <Card className="bg-card border-border">
+            <CardHeader>
+              <CardTitle>Account Overview</CardTitle>
+              <CardDescription>
+                Live authenticated metadata
+              </CardDescription>
+            </CardHeader>
+
+            <CardContent className="space-y-5">
+              <div className="flex items-center gap-3">
+                <Mail className="h-4 w-4 text-muted-foreground" />
+                <div>
+                  <p className="text-xs text-muted-foreground">Email</p>
+                  <p className="text-sm font-medium break-all">{user?.email}</p>
+                </div>
+              </div>
+
+              <Separator />
+
+              <div className="flex items-center gap-3">
+                <Calendar className="h-4 w-4 text-muted-foreground" />
+                <div>
+                  <p className="text-xs text-muted-foreground">Created On</p>
+                  <p className="text-sm font-medium">
+                    {user?.metadata?.creationTime
+                      ? new Date(user.metadata.creationTime).toLocaleDateString()
+                      : 'Unavailable'}
+                  </p>
+                </div>
+              </div>
+
+              <Separator />
+
+              <div className="flex items-center gap-3">
+                <Database className="h-4 w-4 text-muted-foreground" />
+                <div>
+                  <p className="text-xs text-muted-foreground">Email Verified</p>
+                  <p className="text-sm font-medium">
+                    {user?.emailVerified ? 'Verified' : 'Not Verified'}
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-card border-border">
+            <CardHeader>
+              <CardTitle>Workspace Statistics</CardTitle>
+              <CardDescription>
+                Real-time cloud usage summary
+              </CardDescription>
+            </CardHeader>
+
+            <CardContent className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <FileCode className="h-4 w-4 text-muted-foreground" />
+                  <span>Total Snippets</span>
+                </div>
+                <span className="font-semibold">{totalSnippets}</span>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Heart className="h-4 w-4 text-muted-foreground" />
+                  <span>Favorites</span>
+                </div>
+                <span className="font-semibold">{favoriteSnippets}</span>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Tags className="h-4 w-4 text-muted-foreground" />
+                  <span>Total Tags</span>
+                </div>
+                <span className="font-semibold">{totalTags}</span>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Database className="h-4 w-4 text-muted-foreground" />
+                  <span>Languages Used</span>
+                </div>
+                <span className="font-semibold">{languageCount}</span>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
     </div>
   )
 }

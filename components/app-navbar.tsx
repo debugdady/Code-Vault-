@@ -13,17 +13,38 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { useState } from 'react'
-import { mockSnippets } from '@/lib/mock-data'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { Badge } from '@/components/ui/badge'
 import { LANGUAGES } from '@/lib/types'
+import { useAuth } from '@/components/auth-provider'
+import { getUserSnippets } from '@/lib/snippets'
+import type { Snippet } from '@/lib/types'
+import { toast } from 'sonner'
 
 export function AppNavbar() {
+  const { user } = useAuth()
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  const [snippets, setSnippets] = useState<Snippet[]>([])
 
-  const filteredSnippets = mockSnippets.filter(
+  useEffect(() => {
+    async function loadSnippets() {
+      if (!user) return
+
+      try {
+        const data = await getUserSnippets(user.uid)
+        setSnippets(data)
+      } catch (error) {
+        console.error(error)
+        toast.error('Failed to load search index')
+      }
+    }
+
+    loadSnippets()
+  }, [user])
+
+  const filteredSnippets = snippets.filter(
     (snippet) =>
       snippet.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       snippet.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -31,11 +52,11 @@ export function AppNavbar() {
   )
 
   return (
-    <header className="sticky top-0 z-50 flex h-16 items-center gap-4 border-b border-border bg-background px-4 lg:px-6">
+    <header className="sticky top-0 z-50 flex h-16 items-center gap-4 border-b border-border bg-background/90 backdrop-blur px-4 lg:px-6">
       <SidebarTrigger className="-ml-1" />
-      
+
       <div className="flex-1" />
-      
+
       <Dialog open={searchOpen} onOpenChange={setSearchOpen}>
         <DialogTrigger asChild>
           <Button variant="outline" className="w-64 justify-start text-muted-foreground">
@@ -46,36 +67,46 @@ export function AppNavbar() {
             </kbd>
           </Button>
         </DialogTrigger>
-        <DialogContent className="max-w-lg p-0">
+
+        <DialogContent className="max-w-xl p-0">
           <DialogHeader className="sr-only">
             <DialogTitle>Search Snippets</DialogTitle>
           </DialogHeader>
+
           <div className="p-4 border-b border-border">
             <Input
-              placeholder="Search snippets..."
+              placeholder="Search snippets, tags or descriptions..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="bg-secondary border-border"
               autoFocus
             />
           </div>
-          <div className="max-h-80 overflow-auto p-2">
+
+          <div className="max-h-96 overflow-auto p-2">
             {searchQuery && filteredSnippets.length === 0 ? (
               <p className="text-center text-muted-foreground py-8">No snippets found</p>
             ) : searchQuery ? (
-              filteredSnippets.slice(0, 5).map((snippet) => {
+              filteredSnippets.slice(0, 8).map((snippet) => {
                 const lang = LANGUAGES.find((l) => l.value === snippet.language)
+
                 return (
                   <Link
                     key={snippet.id}
                     href={`/snippets/${snippet.id}`}
                     className="flex items-center gap-3 p-3 rounded-lg hover:bg-secondary transition-colors"
-                    onClick={() => setSearchOpen(false)}
+                    onClick={() => {
+                      setSearchOpen(false)
+                      setSearchQuery('')
+                    }}
                   >
                     <div className="flex-1 min-w-0">
                       <p className="font-medium text-foreground truncate">{snippet.title}</p>
-                      <p className="text-sm text-muted-foreground truncate">{snippet.description}</p>
+                      <p className="text-sm text-muted-foreground truncate">
+                        {snippet.description || 'No description'}
+                      </p>
                     </div>
+
                     <Badge className={`${lang?.color} text-white shrink-0`}>
                       {lang?.label || snippet.language}
                     </Badge>
@@ -83,7 +114,9 @@ export function AppNavbar() {
                 )
               })
             ) : (
-              <p className="text-center text-muted-foreground py-8">Type to search snippets</p>
+              <p className="text-center text-muted-foreground py-8">
+                Type to search your cloud snippets
+              </p>
             )}
           </div>
         </DialogContent>

@@ -36,9 +36,9 @@ export async function getUserSnippets(userId: string): Promise<Snippet[]> {
   try {
     const q = query(
       collection(db, 'snippets'),
-      where('userId', '==', userId),
-      orderBy('createdAt', 'desc')
+      where('userId', '==', userId)
     )
+  
     const snapshot = await getDocs(q)
     return snapshot.docs.map((doc) => ({
       id: doc.id,

@@ -1,19 +1,21 @@
 'use client'
 
-import { useState } from 'react'
-import { Tags, Plus, Search, Trash2 } from 'lucide-react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
+import { useState, useEffect, useMemo } from 'react'
+import { Tags, Search, Trash2 } from 'lucide-react'
+import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/empty-state'
 import { Breadcrumbs } from '@/components/breadcrumbs'
 import { ConfirmDialog } from '@/components/confirm-dialog'
-import { mockTags, mockSnippets } from '@/lib/mock-data'
-import type { Tag } from '@/lib/types'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import Link from 'next/link'
+import { useAuth } from '@/components/auth-provider'
+import { getUserSnippets, updateSnippet } from '@/lib/snippets'
+import type { Snippet, Tag } from '@/lib/types'
+import { Spinner } from '@/components/ui/spinner'
+import { Button } from '@/components/ui/button'
 
 const tagColors = [
   'bg-blue-500',
@@ -27,50 +29,105 @@ const tagColors = [
 ]
 
 export default function TagsPage() {
-  const [tags, setTags] = useState<Tag[]>(mockTags)
+  const { user } = useAuth()
+  const [snippets, setSnippets] = useState<Snippet[]>([])
+  const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
-  const [newTagName, setNewTagName] = useState('')
-  const [deleteTagId, setDeleteTagId] = useState<string | null>(null)
+  const [deleteTagName, setDeleteTagName] = useState<string | null>(null)
 
-  const filteredTags = tags.filter((tag) =>
-    tag.name.toLowerCase().includes(search.toLowerCase())
-  )
+  useEffect(() => {
+    async function loadSnippets() {
+      if (!user) {
+        setLoading(false)
+        return
+      }
 
-  const handleAddTag = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!newTagName.trim()) return
+      try {
+        const data = await getUserSnippets(user.uid)
+        setSnippets(data)
+      } catch (error) {
+        console.error('Failed to load snippets:', error)
+        toast.error('Failed to load tags')
+      } finally {
+        setLoading(false)
+      }
+    }
 
-    const existingTag = tags.find(
-      (t) => t.name.toLowerCase() === newTagName.trim().toLowerCase()
+    loadSnippets()
+  }, [user])
+
+  const tags: Tag[] = useMemo(() => {
+    const tagMap = new Map<string, number>()
+
+    snippets.forEach((snippet) => {
+      snippet.tags.forEach((tag) => {
+        const cleanTag = tag.trim().toLowerCase()
+        if (cleanTag) {
+          tagMap.set(cleanTag, (tagMap.get(cleanTag) || 0) + 1)
+        }
+      })
+    })
+
+    return Array.from(tagMap.entries()).map(([name, count], index) => ({
+      id: name,
+      name,
+      count,
+      color: tagColors[index % tagColors.length],
+    }))
+  }, [snippets])
+
+  const filteredTags = useMemo(() => {
+    return tags.filter((tag) =>
+      tag.name.toLowerCase().includes(search.toLowerCase())
     )
-    if (existingTag) {
-      toast.error('Tag already exists')
-      return
-    }
+  }, [tags, search])
 
-    const newTag: Tag = {
-      id: String(Date.now()),
-      name: newTagName.trim().toLowerCase(),
-      color: tagColors[Math.floor(Math.random() * tagColors.length)],
-      count: 0,
-    }
-
-    setTags([...tags, newTag])
-    setNewTagName('')
-    toast.success(`Tag "${newTag.name}" created`)
-  }
-
-  const handleDeleteTag = () => {
-    if (!deleteTagId) return
-    const tag = tags.find((t) => t.id === deleteTagId)
-    setTags(tags.filter((t) => t.id !== deleteTagId))
-    toast.success(`Tag "${tag?.name}" deleted`)
-    setDeleteTagId(null)
-  }
-
-  // Get snippets for a tag
   const getSnippetsForTag = (tagName: string) => {
-    return mockSnippets.filter((s) => s.tags.includes(tagName))
+    return snippets.filter((s) =>
+      s.tags.map((t) => t.toLowerCase()).includes(tagName.toLowerCase())
+    )
+  }
+
+  const handleDeleteTag = async () => {
+    if (!deleteTagName) return
+
+    try {
+      const affectedSnippets = snippets.filter((s) =>
+        s.tags.map((t) => t.toLowerCase()).includes(deleteTagName.toLowerCase())
+      )
+
+      for (const snippet of affectedSnippets) {
+        const updatedTags = snippet.tags.filter(
+          (tag) => tag.toLowerCase() !== deleteTagName.toLowerCase()
+        )
+
+        await updateSnippet(snippet.id, {
+          tags: updatedTags,
+        })
+      }
+
+      const refreshed = snippets.map((snippet) => ({
+        ...snippet,
+        tags: snippet.tags.filter(
+          (tag) => tag.toLowerCase() !== deleteTagName.toLowerCase()
+        ),
+      }))
+
+      setSnippets(refreshed)
+      toast.success(`Tag "${deleteTagName}" deleted from all snippets`)
+      setDeleteTagName(null)
+    } catch (error) {
+      console.error(error)
+      toast.error('Failed to delete tag')
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <Spinner />
+      </div>
+    )
   }
 
   return (
@@ -81,33 +138,15 @@ export default function TagsPage() {
         <div>
           <h1 className="text-3xl font-bold text-foreground">Tags</h1>
           <p className="text-muted-foreground mt-1">
-            Organize your snippets with tags
+            Automatically organized from your real snippet collection
           </p>
         </div>
+
+        <Button variant="outline" disabled>
+          {tags.length} Total Tag{tags.length !== 1 ? 's' : ''}
+        </Button>
       </div>
 
-      {/* Add Tag Form */}
-      <Card className="bg-card border-border">
-        <CardHeader>
-          <CardTitle className="text-lg">Create New Tag</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleAddTag} className="flex gap-3">
-            <Input
-              value={newTagName}
-              onChange={(e) => setNewTagName(e.target.value)}
-              placeholder="Enter tag name..."
-              className="bg-secondary border-border max-w-xs"
-            />
-            <Button type="submit" disabled={!newTagName.trim()}>
-              <Plus className="h-4 w-4 mr-2" />
-              Add Tag
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
-
-      {/* Search */}
       <div className="relative max-w-md">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input
@@ -118,7 +157,6 @@ export default function TagsPage() {
         />
       </div>
 
-      {/* Tags Grid */}
       {filteredTags.length === 0 ? (
         <EmptyState
           icon={Tags}
@@ -126,13 +164,14 @@ export default function TagsPage() {
           description={
             search
               ? 'Try adjusting your search terms.'
-              : 'Create tags to organize your snippets better.'
+              : 'Tags will appear automatically when you add them to snippets.'
           }
         />
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {filteredTags.map((tag) => {
             const snippetsWithTag = getSnippetsForTag(tag.name)
+
             return (
               <Card
                 key={tag.id}
@@ -144,18 +183,21 @@ export default function TagsPage() {
                       <span className={cn('w-3 h-3 rounded-full', tag.color)} />
                       <span className="font-medium text-foreground">{tag.name}</span>
                     </div>
+
                     <Button
                       variant="ghost"
                       size="icon"
                       className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
-                      onClick={() => setDeleteTagId(tag.id)}
+                      onClick={() => setDeleteTagName(tag.name)}
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>
+
                   <p className="text-sm text-muted-foreground mt-2">
                     {snippetsWithTag.length} snippet{snippetsWithTag.length !== 1 ? 's' : ''}
                   </p>
+
                   {snippetsWithTag.length > 0 && (
                     <div className="mt-3 pt-3 border-t border-border">
                       <div className="flex flex-wrap gap-1">
@@ -184,10 +226,10 @@ export default function TagsPage() {
       )}
 
       <ConfirmDialog
-        open={!!deleteTagId}
-        onOpenChange={(open) => !open && setDeleteTagId(null)}
+        open={!!deleteTagName}
+        onOpenChange={(open) => !open && setDeleteTagName(null)}
         title="Delete Tag"
-        description="Are you sure you want to delete this tag? Snippets with this tag will not be deleted, but the tag will be removed from them."
+        description={`Are you sure you want to remove "${deleteTagName}" from all snippets?`}
         confirmLabel="Delete"
         onConfirm={handleDeleteTag}
         variant="destructive"
