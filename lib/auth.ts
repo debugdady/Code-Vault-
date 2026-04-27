@@ -3,6 +3,8 @@ import {
   signInWithEmailAndPassword,
   signOut,
   updateProfile,
+  GoogleAuthProvider,
+  signInWithPopup,
   User,
 } from 'firebase/auth'
 import { auth } from './firebase'
@@ -18,8 +20,7 @@ export async function signup(email: string, password: string, displayName: strin
     }
 
     return userCredential.user
-  } catch (error: any) {
-    console.log("REAL SIGNUP ERROR:", error.code, error.message, error)
+  } catch (error) {
     throw error
   }
 }
@@ -28,8 +29,21 @@ export async function login(email: string, password: string) {
   try {
     const userCredential = await signInWithEmailAndPassword(auth, email, password)
     return userCredential.user
-  } catch (error: any) {
-    console.log("REAL LOGIN ERROR:", error.code, error.message, error)
+  } catch (error) {
+    throw error
+  }
+}
+
+export async function signInWithGoogle() {
+  try {
+    const provider = new GoogleAuthProvider()
+    provider.setCustomParameters({
+      prompt: 'select_account',
+    })
+
+    const result = await signInWithPopup(auth, provider)
+    return result.user
+  } catch (error) {
     throw error
   }
 }
@@ -37,8 +51,7 @@ export async function login(email: string, password: string) {
 export async function logoutUser() {
   try {
     await signOut(auth)
-  } catch (error: any) {
-    console.log("REAL LOGOUT ERROR:", error.code, error.message, error)
+  } catch (error) {
     throw error
   }
 }

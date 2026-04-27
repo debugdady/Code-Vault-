@@ -9,13 +9,13 @@ import {
   BreadcrumbSeparator,
 } from '@/components/ui/breadcrumb'
 
-interface BreadcrumbItem {
+interface BreadcrumbItemType {
   label: string
   href?: string
 }
 
 interface BreadcrumbsProps {
-  items: BreadcrumbItem[]
+  items: BreadcrumbItemType[]
 }
 
 export function Breadcrumbs({ items }: BreadcrumbsProps) {
@@ -29,19 +29,23 @@ export function Breadcrumbs({ items }: BreadcrumbsProps) {
             </Link>
           </BreadcrumbLink>
         </BreadcrumbItem>
+
         {items.map((item, index) => (
-          <BreadcrumbItem key={item.label}>
+          <div key={item.label} className="inline-flex items-center gap-1.5">
             <BreadcrumbSeparator>
               <ChevronRight className="h-4 w-4" />
             </BreadcrumbSeparator>
-            {index === items.length - 1 ? (
-              <BreadcrumbPage>{item.label}</BreadcrumbPage>
-            ) : (
-              <BreadcrumbLink asChild>
-                <Link href={item.href || '#'}>{item.label}</Link>
-              </BreadcrumbLink>
-            )}
-          </BreadcrumbItem>
+
+            <BreadcrumbItem>
+              {index === items.length - 1 ? (
+                <BreadcrumbPage>{item.label}</BreadcrumbPage>
+              ) : (
+                <BreadcrumbLink asChild>
+                  <Link href={item.href || '#'}>{item.label}</Link>
+                </BreadcrumbLink>
+              )}
+            </BreadcrumbItem>
+          </div>
         ))}
       </BreadcrumbList>
     </Breadcrumb>
